@@ -1,98 +1,78 @@
-<!DOCTYPE html>
-<html lang="ja">
-<head>
-  <meta charset="UTF-8">
-  <title>ExcelからQRコード生成</title>
-  <style>
-    body { font-family: sans-serif; text-align: center; padding: 20px; }
-    .qr-container {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: center;
-      gap: 20px;
-      margin-top: 20px;
-    }
-    .qr-item {
-      border: 1px solid #ccc;
-      padding: 10px;
-      width: 180px;
-    }
-    .qr-text {
-      margin-top: 10px;
-      font-size: 14px;
-      white-space: pre-line;
-    }
-  </style>
-</head>
-<body>
-  <h1>ExcelからQRコードを一括生成</h1>
-  <p>Excelの1列目に7桁の数字、2・3列目に説明文を入れてください</p>
-  <input type="file" id="excelFile" accept=".xlsx, .xls" />
-  <div class="qr-container" id="qrContainer"></div>
+<script>
+  document.getElementById('excelFile').addEventListener('change', function (e) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  <!-- ライブラリ -->
-  <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/qrcodejs/qrcode.min.js"></script>
+    const reader = new FileReader();
+    reader.onload = function (evt) {
+      const data = new Uint8Array(evt.target.result);
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
-  <script>
-    document.getElementById('excelFile').addEventListener('change', function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
+      const qrContainer = document.getElementById('qrContainer');
+      qrContainer.innerHTML = '';
 
-      const reader = new FileReader();
-      reader.onload = function (evt) {
-        const data = new Uint8Array(evt.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      rows.forEach((row, index) => {
+        const number = row[0];
+        const line1 = row[1] || '';
+        const line2 = row[2] || '';
 
-        const qrContainer = document.getElementById('qrContainer');
-        qrContainer.innerHTML = '';
+        if (typeof number === 'number' && String(number).length === 7) {
+          const container = document.createElement('div');
+          container.className = 'qr-item';
 
-        rows.forEach((row, index) => {
-          const number = row[0];
-          const line1 = row[1] || '';
-          const line2 = row[2] || '';
+          const canvas = document.createElement('canvas');
+          const size = 200;
+          canvas.width = size;
+          canvas.height = size + 50;
 
-          if (typeof number === 'number' && String(number).length === 7) {
-            const container = document.createElement('div');
-            container.className = 'qr-item';
+          const ctx = canvas.getContext('2d');
 
-            const qrDiv = document.createElement('div');
-            qrDiv.id = 'qr' + index;
+          // 背景を白で塗る
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            const text = document.createElement('div');
-            text.className = 'qr-text';
-            text.textContent = `${line1}\n${line2}`;
+          // QRコード生成（オフスクリーン）
+          const tempDiv = document.createElement('div');
+          const qr = new QRCode(tempDiv, {
+            text: String(number),
+            width: size,
+            height: size,
+            correctLevel: QRCode.CorrectLevel.H
+          });
 
-            const downloadBtn = document.createElement('a');
-            downloadBtn.textContent = `ダウンロード (${number})`;
-            downloadBtn.style.display = 'block';
-            downloadBtn.style.marginTop = '10px';
+          setTimeout(() => {
+            const qrImg = tempDiv.querySelector('img');
+            const tempImage = new Image();
+            tempImage.onload = () => {
+              ctx.drawImage(tempImage, 0, 0, size, size);
 
-            container.appendChild(qrDiv);
-            container.appendChild(text);
-            container.appendChild(downloadBtn);
-            qrContainer.appendChild(container);
+              // テキストを描画
+              ctx.fillStyle = '#000000';
+              ctx.font = '14px sans-serif';
+              ctx.textAlign = 'center';
+              ctx.fillText(line1, size / 2, size + 20);
+              ctx.fillText(line2, size / 2, size + 40);
 
-            const qr = new QRCode(qrDiv, {
-              text: String(number),
-              width: 128,
-              height: 128
-            });
-
-            // QR生成完了後、画像のURLを取得してダウンロードリンクに設定
-            setTimeout(() => {
-              const img = qrDiv.querySelector('img') || qrDiv.querySelector('canvas');
-              const url = img.toDataURL ? img.toDataURL('image/png') : img.src;
-              downloadBtn.href = url;
+              // ダウンロードリンク設定
+              const dataURL = canvas.toDataURL('image/png');
+              const downloadBtn = document.createElement('a');
+              downloadBtn.href = dataURL;
               downloadBtn.download = `QR_${number}.png`;
-            }, 500);
-          }
-        });
-      };
-      reader.readAsArrayBuffer(file);
-    });
-  </script>
-</body>
-</html>
+              downloadBtn.textContent = `ダウンロード (${number})`;
+              downloadBtn.style.display = 'block';
+              downloadBtn.style.marginTop = '10px';
+
+              container.appendChild(canvas);
+              container.appendChild(downloadBtn);
+              qrContainer.appendChild(container);
+            };
+            tempImage.src = qrImg.src;
+          }, 300); // QR生成を少し待つ
+        }
+      });
+    };
+    reader.readAsArrayBuffer(file);
+  });
+</script>
